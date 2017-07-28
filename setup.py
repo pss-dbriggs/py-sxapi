@@ -3,6 +3,7 @@ from setuptools import setup, find_packages
 setup(
 	name='py_sxapi',
 	version = '0.1',
+	license = 'GPL-3.0',
 	packages=find_packages(),
 	#py_modules=['py_sxapi'],
 	summary='A set of tools for using the SXAPIs with Python',
