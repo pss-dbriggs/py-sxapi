@@ -11,7 +11,7 @@ from lxml import etree
 
 _debug = False
 _mode = 'test'
-_logfile = ''
+_logfile = '/home/dbriggs/environments/sxe_item_import/test.log'
 
 def main(mode = 'test', debug=False):
     _mode = mode
