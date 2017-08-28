@@ -7,6 +7,7 @@
 from __future__ import print_function
 import zeep
 import csv
+import json
 from lxml import etree
 
 _debug = False
@@ -21,6 +22,13 @@ def main(mode = 'test', debug=False):
     item_import(file)
     
 def item_import(file):
+    """
+    Input: a file-like object containing a table mapping to the data needed 
+        for sxapiICProductMnt
+    Output: A JSON array consisting of two lists: ErrorMessage and ReturnData
+    """
+
+    logfile=_logfile
     
     if _mode == 'prod':
         web_srv = 'pssapps8'
@@ -72,12 +80,23 @@ def item_import(file):
             logf.write('\n')
             
     response = client.service.ICProductMnt(callConnection=connection_info, request=request)    #the actual SOAP call to ICProductMnt
+    response_dict = zeep.helpers.serialize_object(response)
+
+    errors = []
+    return_data = []
+
+    errors = response_dict['ErrorMessage'].split('|')
+    return_data = response_dict['ReturnData'].split('|')
+
+    response_dict['ErrorMessage'] = errors
+    response_dict['ReturnData'] = return_data
+
     #print dir(response)
     if logfile != '':
         with open(logfile, 'a') as logf:
-            print(response, file=logf)
+            print(response_dict, file=logf)
 
-    return response
+    return json.dumps(response_dict)
 
 
     

@@ -1,6 +1,5 @@
 py_sxapi/__init__.py
 py_sxapi/ic.py
-py_sxapi/py_sxapi.py
 py_sxapi.egg-info/PKG-INFO
 py_sxapi.egg-info/SOURCES.txt
 py_sxapi.egg-info/dependency_links.txt
