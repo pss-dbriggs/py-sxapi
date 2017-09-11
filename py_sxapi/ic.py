@@ -21,9 +21,15 @@ def main(mode = 'test', debug=False):
     _logfile = '//pssfile2/Users/dbriggs/My Documents/Programming/SXe Item Import/log.txt'
     item_import(file)
     
-def item_import(file):
+def item_import(credentials, file):
     """
-    Input: a file-like object containing a table mapping to the data needed 
+    Input:
+        -credentials, a dictionary containing three items, which are used in 
+        creating the connection:
+            -cono: the SXe Company Number in the callConnection object
+            -username: the initials of the SXe operator making the call
+            -password: the password of the SXe operating making the call 
+        -file, a file-like object containing a table mapping to the data needed 
         for sxapiICProductMnt
     Output: A JSON array consisting of two lists: ErrorMessage and ReturnData
     """
@@ -40,8 +46,11 @@ def item_import(file):
     wsdl = 'http://'+web_srv+'/sxapi/ServiceIC.svc?wsdl'    #pull in the WSDL
     client = zeep.Client(wsdl=wsdl)
     #user credentials, need to be included in every call
-    connection_info = {'CompanyNumber':1,'ConnectionString':appsrv_cnxn_str,'OperatorInitials':'atst','OperatorPassword':'\A3F7c?K23E^'}  
-        
+    #connection_info = {'CompanyNumber':1,'ConnectionString':appsrv_cnxn_str,'OperatorInitials':'atst','OperatorPassword':'\A3F7c?K23E^'}  
+    connection_info = {'CompanyNumber':credentials['cono'],
+        'ConnectionString':appsrv_cnxn_str,
+        'OperatorInitials':credentials['username'],
+        'OperatorPassword':credentials['password']}  
 
     chg_list = []
 
@@ -82,14 +91,13 @@ def item_import(file):
     response = client.service.ICProductMnt(callConnection=connection_info, request=request)    #the actual SOAP call to ICProductMnt
     response_dict = zeep.helpers.serialize_object(response)
 
-    errors = []
-    return_data = []
+    if response_dict['ErrorMessage'] is not None:
+        errors = response_dict['ErrorMessage'].split('|')
+        response_dict['ErrorMessage'] = errors
 
-    errors = response_dict['ErrorMessage'].split('|')
-    return_data = response_dict['ReturnData'].split('|')
-
-    response_dict['ErrorMessage'] = errors
-    response_dict['ReturnData'] = return_data
+    if response_dict['ReturnData'] is not None:
+        return_data = response_dict['ReturnData'].split('|')
+        response_dict['ReturnData'] = return_data
 
     #print dir(response)
     if logfile != '':
