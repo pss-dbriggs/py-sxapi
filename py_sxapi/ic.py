@@ -10,101 +10,191 @@ import csv
 import json
 from lxml import etree
 
-_debug = False
-_mode = 'test'
-_logfile = '/home/dbriggs/environments/sxe_item_import/test.log'
-
-def main(mode = 'test', debug=False):
-    _mode = mode
-    _debug = debug
-    file = '//pssfile2/Users/dbriggs/My Documents/Programming/SXe Item Import/20CPmm3.csv'
-    _logfile = '//pssfile2/Users/dbriggs/My Documents/Programming/SXe Item Import/log.txt'
-    item_import(file)
+class ICService():
+    _mode = 'test'
+    _debug = False
+    _logfile = '/home/dbriggs/environments/sxe_item_import/test.log'
     
-def item_import(credentials, file):
-    """
-    Input:
-        -credentials, a dictionary containing three items, which are used in 
-        creating the connection:
-            -cono: the SXe Company Number in the callConnection object
-            -username: the initials of the SXe operator making the call
-            -password: the password of the SXe operating making the call 
-        -file, a file-like object containing a table mapping to the data needed 
-        for sxapiICProductMnt
-    Output: A JSON array consisting of two lists: ErrorMessage and ReturnData
-    """
+    def __init__(mode = 'test', debug=False):
+        _mode = mode
+        _debug = debug
+        file = '//pssfile2/Users/dbriggs/My Documents/Programming/SXe Item Import/20CPmm3.csv'
+        _logfile = '//pssfile2/Users/dbriggs/My Documents/Programming/SXe Item Import/log.txt'
+        
+        if _mode == 'prod':
+            web_srv = 'pssapps8'
+        else:
+            web_srv = 'pssapps12'
 
-    logfile=_logfile
-    
-    if _mode == 'prod':
-        web_srv = 'pssapps8'
-        appsrv_cnxn_str = 'appserver://psssxe:7182/sxapiappsrv'
-    else:
-        web_srv = 'pssapps12'
-        appsrv_cnxn_str = 'appserver://psssxe:7982/test10sxapiappsrv'
+        wsdl = 'http://'+web_srv+'/sxapi/ServiceIC.svc?wsdl'    #pull in the WSDL
+        client = zeep.Client(wsdl=wsdl)
+        self._client = client
+        #item_import(file)
 
-    wsdl = 'http://'+web_srv+'/sxapi/ServiceIC.svc?wsdl'    #pull in the WSDL
-    client = zeep.Client(wsdl=wsdl)
-    #user credentials, need to be included in every call
-    #connection_info = {'CompanyNumber':1,'ConnectionString':appsrv_cnxn_str,'OperatorInitials':'atst','OperatorPassword':'\A3F7c?K23E^'}  
-    connection_info = {'CompanyNumber':credentials['cono'],
-        'ConnectionString':appsrv_cnxn_str,
-        'OperatorInitials':credentials['username'],
-        'OperatorPassword':credentials['password']}  
+    def create_credentials(self, credentials):
+        """
+        Create the credentials file for use in API calls
+        Input:
+            -credentials, a dictionary containing three items, which are used in 
+            creating the connection:
+                -cono: the SXe Company Number in the callConnection object
+                -username: the initials of the SXe operator making the call
+                -password: the password of the SXe operating making the call 
+            -file, a file-like object containing a table mapping to the data needed 
+            for sxapiICProductMnt
+        Output: A dictionary containing four items:
+            -CompanyNumber: the SXe Company Number in the callConnection object
+            -ConnectionString: the connection string to the SXAPI server
+            -OperatorInitials: the initials of the SXe operator making the call
+            -OperatorPassword: the password of the SXe operating making the call 
+        """
 
-    chg_list = []
+        #connection_info = {'CompanyNumber':1,'ConnectionString':appsrv_cnxn_str,'OperatorInitials':'atst','OperatorPassword':'\A3F7c?K23E^'}  
+        if _mode == 'prod':
+            appsrv_cnxn_str = 'appserver://psssxe:7182/sxapiappsrv'
+        else:
+            appsrv_cnxn_str = 'appserver://psssxe:7982/test10sxapiappsrv'
 
-    with open(file) as csvfile:
-        reader = csv.DictReader(csvfile)
-        set_no = 1
-        for row in reader:
-            seq_no = 1
-            key1 = row['prod']
-            key2 = row['whse']
-            for key in row.keys():
-                if key not in ['prod','whse']:
-                    tmp_dict = {}
-                    tmp_dict['FieldName'] = key.lower()
-                    tmp_dict['FieldValue'] = row[key]
-                    tmp_dict['Key1'] = key1
-                    tmp_dict['Key2'] = key2
-                    tmp_dict['SequenceNumber'] = seq_no
-                    tmp_dict['SetNumber'] = set_no
-                    tmp_dict['UpdateMode'] = 'chg'
-                    chg_list.append(tmp_dict)
-                    seq_no += 1
-            
-            set_no += 1
-             
+        connection_info = {'CompanyNumber':credentials['cono'],
+            'ConnectionString':appsrv_cnxn_str,
+            'OperatorInitials':credentials['username'],
+            'OperatorPassword':credentials['password']}
+        return connection_info
 
-    #the request payload. See ICProductMnt in the SXAPI docs for more information on structure
-    request={'InfieldModification':                         
-                {'InfieldModification':
-                    chg_list
+    def check_product(self, connection_info, product):
+        request={product}
+        if _debug and _logfile != '':
+            with open(_logfile, 'a') as logf:
+
+                logf.write(etree.tostring(self._client.create_message(
+                    self._client.service, 
+                    'ICGetProductListV2', 
+                    callConnection=connection_info, 
+                    request=request)))
+
+                logf.write('\n')
+        
+        response = self._client.service.ICGetProductListV2(
+            callConnection=connection_info, 
+            request=request)
+
+        response_dict = zeep.helpers.serialize_object(response)
+
+    def check_product_warehouse(self, connection_info, product, warehouse):
+        request={'InfieldModification':         
+                    {'InfieldModification':
+                        {'Product':product, 'Warehouse': warehouse}
+                    }
                 }
-            }
-    if _debug and logfile != '':
-        with open(logfile, 'a') as logf:
-            logf.write(etree.tostring(client.create_message(client.service, 'ICProductMnt', callConnection=connection_info, request=request)))
-            logf.write('\n')
-            
-    response = client.service.ICProductMnt(callConnection=connection_info, request=request)    #the actual SOAP call to ICProductMnt
-    response_dict = zeep.helpers.serialize_object(response)
+        if _debug and _logfile != '':
+            with open(_logfile, 'a') as logf:
 
-    if response_dict['ErrorMessage'] is not None:
-        errors = response_dict['ErrorMessage'].split('|')
-        response_dict['ErrorMessage'] = errors
+                logf.write(etree.tostring(self._client.create_message(
+                    self._client.service, 
+                    'ICGetWhseProductDataGeneral', 
+                    callConnection=connection_info, 
+                    request=request)))
 
-    if response_dict['ReturnData'] is not None:
-        return_data = response_dict['ReturnData'].split('|')
-        response_dict['ReturnData'] = return_data
+                logf.write('\n')
 
-    #print dir(response)
-    if logfile != '':
-        with open(logfile, 'a') as logf:
-            print(response_dict, file=logf)
+        response = self._client.service.ICGetWhseProductDataGeneral(
+            callConnection=connection_info, 
+            request=request)
 
-    return json.dumps(response_dict)
+        response_dict = zeep.helpers.serialize_object(response)
+
+    def item_import(self, credentials, file):
+        """
+        Import items based on file input. Uses the sxapiICProductMnt Call.
+        Input:
+            -credentials, a dictionary containing three items, which are used in 
+            creating the connection:
+                -cono: the SXe Company Number in the callConnection object
+                -username: the initials of the SXe operator making the call
+                -password: the password of the SXe operating making the call 
+            -file, a file-like object containing a table mapping to the data needed 
+            for sxapiICProductMnt
+        Output: A JSON array consisting of two lists: ErrorMessage and ReturnData
+        """
+        connection_info = create_credentials(credentials)
+
+        chg_list = []
+
+        with open(file) as csvfile:
+            reader = csv.DictReader(csvfile)
+            set_no = 1
+            for row in reader:
+                seq_no = 1
+                key1 = row['prod']
+                key2 = row['whse']
+                update_mode = 'chg'
+                
+                """
+                if key2 <> '':
+                    if check_product_warehouse() = True:
+                        update_mode = 'chg'
+                    else:
+                        update_mode = 'add'
+                else:
+                    if check_product() = True:
+                        update_mode = 'chg'
+                    else:
+                        update_mode = 'add'
+                """
+                
+                for key in row.keys():
+                    if key not in ['prod','whse']:
+                        tmp_dict = {}
+                        tmp_dict['FieldName'] = key.lower()
+                        tmp_dict['FieldValue'] = row[key]
+                        tmp_dict['Key1'] = key1
+                        tmp_dict['Key2'] = key2
+                        tmp_dict['SequenceNumber'] = seq_no
+                        tmp_dict['SetNumber'] = set_no
+                        tmp_dict['UpdateMode'] = update_mode
+                        chg_list.append(tmp_dict)
+                        seq_no += 1
+                
+                set_no += 1
+                 
+
+        #the request payload. See ICProductMnt in the SXAPI docs for more information on structure
+        request={'InfieldModification':                         
+                    {'InfieldModification':
+                        chg_list
+                    }
+                }
+        if _debug and _logfile != '':
+            with open(_logfile, 'a') as logf:
+
+                logf.write(etree.tostring(self._client.create_message(
+                    self._client.service, 
+                    'ICProductMnt', 
+                    callConnection=connection_info, 
+                    request=request)))
+
+                logf.write('\n')
+                
+        response = self._client.service.ICProductMnt(
+            callConnection=connection_info, 
+            request=request)    #the actual SOAP call to ICProductMnt
+
+        response_dict = zeep.helpers.serialize_object(response)
+
+        if response_dict['ErrorMessage'] is not None:
+            errors = response_dict['ErrorMessage'].split('|')
+            response_dict['ErrorMessage'] = errors
+
+        if response_dict['ReturnData'] is not None:
+            return_data = response_dict['ReturnData'].split('|')
+            response_dict['ReturnData'] = return_data
+
+        #print dir(response)
+        if _logfile != '':
+            with open(_logfile, 'a') as logf:
+                print(response_dict, file=logf)
+
+        return json.dumps(response_dict)
 
 
     
@@ -139,5 +229,5 @@ request={'InfieldModification':                         #the request payload. Se
 
 """
 
-if __name__ == "__main__":
-    main(mode='test', debug=True)
+#if __name__ == "__main__":
+    #main(mode='test', debug=True)
