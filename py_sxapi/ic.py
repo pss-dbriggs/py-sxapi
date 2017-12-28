@@ -8,20 +8,19 @@ from __future__ import print_function
 import zeep
 import csv
 import json
+import datetime
 from lxml import etree
 
-class ICService():
+class ICService:
     _mode = 'test'
     _debug = False
     _logfile = '/home/dbriggs/environments/sxe_item_import/test.log'
     
-    def __init__(mode = 'test', debug=False):
-        _mode = mode
-        _debug = debug
-        file = '//pssfile2/Users/dbriggs/My Documents/Programming/SXe Item Import/20CPmm3.csv'
-        _logfile = '//pssfile2/Users/dbriggs/My Documents/Programming/SXe Item Import/log.txt'
+    def __init__(self, mode = 'test', debug=False):
+        self._mode = mode
+        self._debug = debug      
         
-        if _mode == 'prod':
+        if self._mode == 'prod':
             web_srv = 'pssapps8'
         else:
             web_srv = 'pssapps12'
@@ -50,7 +49,7 @@ class ICService():
         """
 
         #connection_info = {'CompanyNumber':1,'ConnectionString':appsrv_cnxn_str,'OperatorInitials':'atst','OperatorPassword':'\A3F7c?K23E^'}  
-        if _mode == 'prod':
+        if self._mode == 'prod':
             appsrv_cnxn_str = 'appserver://psssxe:7182/sxapiappsrv'
         else:
             appsrv_cnxn_str = 'appserver://psssxe:7982/test10sxapiappsrv'
@@ -62,9 +61,9 @@ class ICService():
         return connection_info
 
     def check_product(self, connection_info, product):
-        request={product}
-        if _debug and _logfile != '':
-            with open(_logfile, 'a') as logf:
+        request={ 'ProductCode':product }
+        if self._debug and self._logfile != '':
+            with open(self._logfile, 'a') as logf:
 
                 logf.write(etree.tostring(self._client.create_message(
                     self._client.service, 
@@ -80,14 +79,15 @@ class ICService():
 
         response_dict = zeep.helpers.serialize_object(response)
 
+        if response_dict['Outproduct'] is not None:
+            return True
+        return False
+        #return response_dict
+
     def check_product_warehouse(self, connection_info, product, warehouse):
-        request={'InfieldModification':         
-                    {'InfieldModification':
-                        {'Product':product, 'Warehouse': warehouse}
-                    }
-                }
-        if _debug and _logfile != '':
-            with open(_logfile, 'a') as logf:
+        request={ 'Product':product,'Whse':warehouse }
+        if self._debug and self._logfile != '':
+            with open(self._logfile, 'a') as logf:
 
                 logf.write(etree.tostring(self._client.create_message(
                     self._client.service, 
@@ -102,6 +102,10 @@ class ICService():
             request=request)
 
         response_dict = zeep.helpers.serialize_object(response)
+        #return response_dict
+        if response_dict['ErrorMessage'] is None:
+            return True
+        return False
 
     def item_import(self, credentials, file):
         """
@@ -116,7 +120,7 @@ class ICService():
             for sxapiICProductMnt
         Output: A JSON array consisting of two lists: ErrorMessage and ReturnData
         """
-        connection_info = create_credentials(credentials)
+        connection_info = self.create_credentials(credentials)
 
         chg_list = []
 
@@ -126,21 +130,24 @@ class ICService():
             for row in reader:
                 seq_no = 1
                 key1 = row['prod']
-                key2 = row['whse']
+                if 'whse' in row:
+                    key2 = row['whse']
+                else:
+                    key2 = ''
                 update_mode = 'chg'
                 
-                """
-                if key2 <> '':
-                    if check_product_warehouse() = True:
+                
+                if key2 != '':
+                    if self.check_product_warehouse(connection_info, key1, key2) == True:
                         update_mode = 'chg'
                     else:
                         update_mode = 'add'
                 else:
-                    if check_product() = True:
+                    if self.check_product(connection_info, key1) == True:
                         update_mode = 'chg'
                     else:
                         update_mode = 'add'
-                """
+                
                 
                 for key in row.keys():
                     if key not in ['prod','whse']:
@@ -164,8 +171,8 @@ class ICService():
                         chg_list
                     }
                 }
-        if _debug and _logfile != '':
-            with open(_logfile, 'a') as logf:
+        if self._debug and self._logfile != '':
+            with open(self._logfile, 'a') as logf:
 
                 logf.write(etree.tostring(self._client.create_message(
                     self._client.service, 
@@ -190,9 +197,9 @@ class ICService():
             response_dict['ReturnData'] = return_data
 
         #print dir(response)
-        if _logfile != '':
-            with open(_logfile, 'a') as logf:
-                print(response_dict, file=logf)
+        if self._logfile != '':
+            with open(self._logfile, 'a') as logf:
+                print("%s: ICProductMnt - %s" % (datetime.datetime.utcnow(), json.dumps(response_dict)), file=logf)
 
         return json.dumps(response_dict)
 
