@@ -14,7 +14,7 @@ from lxml import etree
 class ICService:
     _mode = 'test'
     _debug = False
-    _logfile = '/home/dbriggs/environments/sxe_item_import/test.log'
+    _logfile = ''
     
     def __init__(self, mode = 'test', debug=False):
         self._mode = mode
