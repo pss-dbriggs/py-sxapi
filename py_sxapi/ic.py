@@ -1,5 +1,5 @@
 """
-    A simple call to update standard costs in icsw. Included as an example of use of the SXAPIs
+    Wrapper for SXAPI calls to the Inventory Control (IC) module.
     
     connection string "appserver://psssxe:7182/sxapiappsrv"
     wsdl: http://pssapps8/sxapi/serviceIC.svc.
