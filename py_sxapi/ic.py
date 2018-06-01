@@ -5,11 +5,10 @@
     wsdl: http://pssapps8/sxapi/serviceIC.svc.
 """
 from __future__ import print_function
-import zeep
 import csv
 import json
+import requests
 import datetime
-from lxml import etree
 
 class ICService:
     _mode = 'test'
@@ -18,20 +17,23 @@ class ICService:
     
     def __init__(self, mode = 'test', debug=False):
         self._mode = mode
-        self._debug = debug      
+        self._debug = debug
+        self._endpoint     
         
         if self._mode == 'prod':
-            web_srv = 'pssapps8'
+            self.endpoint = 'http://psssxe2:8185/rest/sxapirestservice/'
         else:
-            web_srv = 'pssapps12'
+            self.endpoint = 'http://psssxe3:8080/rest/sxapirestservice/'
 
-        wsdl = 'http://'+web_srv+'/sxapi/ServiceIC.svc?wsdl'    #pull in the WSDL
+        #Legacy SOAP code, can remove
+        """wsdl = 'http://'+web_srv+'/sxapi/ServiceIC.svc?wsdl'    #pull in the WSDL
         client = zeep.Client(wsdl=wsdl)
-        self._client = client
+        self._client = client"""
         #item_import(file)
 
     def create_credentials(self, credentials):
         """
+        !!!Deprecated due to switch to REST 
         Create the credentials file for use in API calls
         Input:
             -credentials, a dictionary containing three items, which are used in 
@@ -60,48 +62,65 @@ class ICService:
             'OperatorPassword':credentials['password']}
         return connection_info
 
-    def check_product(self, connection_info, product):
-        request={ 'ProductCode':product }
-        if self._debug and self._logfile != '':
+    def send_request(self, function, headers):
+
+        if self._debug and self._logfile != '': #write to log if debug is turned on
             with open(self._logfile, 'a') as logf:
 
-                logf.write(etree.tostring(self._client.create_message(
-                    self._client.service, 
-                    'ICGetProductListV2', 
-                    callConnection=connection_info, 
-                    request=request)))
-
+                logf.write(request)
                 logf.write('\n')
-        
-        response = self._client.service.ICGetProductListV2(
-            callConnection=connection_info, 
-            request=request)
 
-        response_dict = zeep.helpers.serialize_object(response)
+        response = requests.get(self.endpoint+function, headers=headers)         
+        
+        if response.status_code == requests.codes.ok:
+            with open(logfile, 'a') as logf:
+                print(response, file=logf)
+        
+        else:
+            with open(logfile, 'a') as logf:
+                print(response, file=logf)
+        return response
+
+    def check_product(self, credentials, product):
+        #request={ 'ProductCode':product } legacy SOAP request
+        request={'request':                         #the request payload. See ICGetProductListV2 in the SXAPI docs for more information on structure
+            {
+                'companyNumber': credentials['cono'],
+                'operatorInit' : credentials['username'],
+                'operatorPassword' : credentials['password'],
+                'productCode' : product
+            }
+        }
+        
+        #response = self._client.service.ICGetProductListV2( legacy SOAP call
+        #    callConnection=connection_info, 
+        #    request=request)
+
+        response = send_request(function='sxapiicgetproductlistv2', headers=request)
+
+        response_dict = response.json()
 
         if response_dict['Outproduct'] is not None:
             return True
         return False
         #return response_dict
 
-    def check_product_warehouse(self, connection_info, product, warehouse):
-        request={ 'Product':product,'Whse':warehouse }
-        if self._debug and self._logfile != '':
-            with open(self._logfile, 'a') as logf:
+    def check_product_warehouse(self, credentials, product, warehouse):
+        #request={ 'Product':product,'Whse':warehouse }
+        request={'request':                         #the request payload. See ICGetWhseProductDataGeneral in the SXAPI docs for more information on structure
+            {
+                'companyNumber': credentials['cono'],
+                'operatorInit' : credentials['username'],
+                'operatorPassword' : credentials['password'],
+                'product':product,
+                'whse':warehouse
+            }
+        }
 
-                logf.write(etree.tostring(self._client.create_message(
-                    self._client.service, 
-                    'ICGetWhseProductDataGeneral', 
-                    callConnection=connection_info, 
-                    request=request)))
+        response = send_request(function='sxapiicgetwhseproductdatageneralv2', headers=request)
 
-                logf.write('\n')
+        response_dict = response.json()
 
-        response = self._client.service.ICGetWhseProductDataGeneral(
-            callConnection=connection_info, 
-            request=request)
-
-        response_dict = zeep.helpers.serialize_object(response)
         #return response_dict
         if response_dict['ErrorMessage'] is None:
             return True
@@ -120,7 +139,7 @@ class ICService:
             for sxapiICProductMnt
         Output: A JSON array consisting of two lists: ErrorMessage and ReturnData
         """
-        connection_info = self.create_credentials(credentials)
+        #connection_info = self.create_credentials(credentials)
 
         chg_list = []
 
@@ -136,29 +155,27 @@ class ICService:
                     key2 = ''
                 update_mode = 'chg'
                 
-                
                 if key2 != '':
-                    if self.check_product_warehouse(connection_info, key1, key2) == True:
+                    if self.check_product_warehouse(credentials, key1, key2) == True:
                         update_mode = 'chg'
                     else:
                         update_mode = 'add'
                 else:
-                    if self.check_product(connection_info, key1) == True:
+                    if self.check_product(credentials, key1) == True:
                         update_mode = 'chg'
                     else:
                         update_mode = 'add'
-                
-                
+
                 for key in row.keys():
                     if key not in ['prod','whse']:
                         tmp_dict = {}
-                        tmp_dict['FieldName'] = key.lower()
-                        tmp_dict['FieldValue'] = row[key]
-                        tmp_dict['Key1'] = key1
-                        tmp_dict['Key2'] = key2
-                        tmp_dict['SequenceNumber'] = seq_no
-                        tmp_dict['SetNumber'] = set_no
-                        tmp_dict['UpdateMode'] = update_mode
+                        tmp_dict['fieldName'] = key.lower()
+                        tmp_dict['fieldValue'] = row[key]
+                        tmp_dict['key1'] = key1
+                        tmp_dict['key2'] = key2
+                        tmp_dict['seqNo'] = seq_no
+                        tmp_dict['setNo'] = set_no
+                        tmp_dict['updateMode'] = 'add'
                         chg_list.append(tmp_dict)
                         seq_no += 1
                 
@@ -166,27 +183,18 @@ class ICService:
                  
 
         #the request payload. See ICProductMnt in the SXAPI docs for more information on structure
-        request={'InfieldModification':                         
-                    {'InfieldModification':
-                        chg_list
-                    }
-                }
-        if self._debug and self._logfile != '':
-            with open(self._logfile, 'a') as logf:
+        request={'request':                         #the request payload. See ICProductMnt in the SXAPI docs for more information on structure
+            {
+                'companyNumber': credentials['cono'],
+                'operatorInit' : credentials['username'],
+                'operatorPassword' : credentials['password'],
+                'tMntTt' : chg_list
+            }
+        }
+        
+        response = send_request(function='sxapiicproductmnt', headers=request)
 
-                logf.write(etree.tostring(self._client.create_message(
-                    self._client.service, 
-                    'ICProductMnt', 
-                    callConnection=connection_info, 
-                    request=request)))
-
-                logf.write('\n')
-                
-        response = self._client.service.ICProductMnt(
-            callConnection=connection_info, 
-            request=request)    #the actual SOAP call to ICProductMnt
-
-        response_dict = zeep.helpers.serialize_object(response)
+        response_dict = response.json()
 
         if response_dict['ErrorMessage'] is not None:
             errors = response_dict['ErrorMessage'].split('|')
