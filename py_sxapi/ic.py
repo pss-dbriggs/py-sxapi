@@ -9,6 +9,7 @@ import csv
 import json
 import requests
 import datetime
+from bs4 import BeautifulSoup
 
 class ICService:
     _mode = 'test'
@@ -16,6 +17,7 @@ class ICService:
     _logfile = '/home/dbriggs/environments/sxe_item_import/test_log.log'
     _endpoint = ''
     _credentials = {}
+    _directory = {}
     
     def __init__(self, mode = 'test', debug=False):
         self._mode = mode
@@ -31,6 +33,12 @@ class ICService:
         client = zeep.Client(wsdl=wsdl)
         self._client = client"""
         #item_import(file)
+    def get_directory(self):
+        response = requests.get(self.endpoint+'?_wadl')
+        soup = BeautifulSoup(response.text, 'lxml')
+        for tag in soup.resources.find_all(path=True):
+            _directory[tag['path'][1:]] = tag.find('method')['name']
+
 
     def create_credentials(self, credentials):
         """
