@@ -19,7 +19,7 @@ class ICService:
     _credentials = {}
     _directory = {}
     
-    def __init__(self, mode = 'test', debug=False):
+    def __init__(self, mode = 'prod', debug=False):
         self._mode = mode
         self._debug = debug  
         
@@ -37,7 +37,7 @@ class ICService:
         response = requests.get(self.endpoint+'?_wadl')
         soup = BeautifulSoup(response.text, 'lxml')
         for tag in soup.resources.find_all(path=True):
-            _directory[tag['path'][1:]] = tag.find('method')['name']
+            self._directory[tag['path'][1:]] = tag.find('method')['name']
 
 
     def create_credentials(self, credentials):
@@ -78,8 +78,6 @@ class ICService:
 
                 logf.write(json.dumps(data))
                 logf.write('\n')
-
-        #requests only accepts strings in the headers, but we want to pass json
 
         response = requests.post(self.endpoint+function, json=data)         
         
