@@ -21,7 +21,7 @@ class py_sxapi:
     
     def __init__(self, mode = 'prod', debug=False):
         """
-        TODO: Make endpoint and logfile parameters, pull both from config file if not specified
+        TODO: Make endpoint and logfile parameters, pull both (as well as mode) from config file if not specified
         """
         self._mode = mode
         self._debug = debug  
