@@ -14,7 +14,7 @@ from bs4 import BeautifulSoup
 class py_sxapi:
     _mode = 'test'
     _debug = False
-    _logfile = '/home/dbriggs/environments/sxe_item_import/test_log.log'
+    _logfile = ''
     _endpoint = ''
     _credentials = {}
     _directory = {}
