@@ -12,7 +12,7 @@ import datetime
 from bs4 import BeautifulSoup
 
 class py_sxapi:
-    _mode = 'test'
+    _mode = 'prod'
     _debug = False
     _logfile = ''
     _endpoint = ''
@@ -84,13 +84,14 @@ class py_sxapi:
 
         response = requests.post(self.endpoint+function, json=data)         
         
-        if response.status_code == requests.codes.ok:
+        if response.status_code == requests.codes.ok and self._logfile != '':
             with open(self._logfile, 'a') as logf:
                 print(response.text, file=logf)
         
         else:
-            with open(self._logfile, 'a') as logf:
-                print(response.text, file=logf)
+            if self._logfile != '':
+                with open(self._logfile, 'a') as logf:
+                    print(response.text, file=logf)
         return response
 
     def check_product(self, product, credentials=None):
