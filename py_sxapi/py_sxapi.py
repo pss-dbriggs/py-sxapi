@@ -42,6 +42,16 @@ class py_sxapi:
         for tag in soup.resources.find_all(path=True):
             self._directory[tag['path'][1:]] = tag.find('method')['name']
 
+    def chunk(self, length, list):
+        """
+        Used to separate long lists into multiple requests for performance reasons.
+        Input:
+            -length, the max length of each chunk to be returned
+            -list, the list of elements to be chunked
+        Output: List of chunks of max length length
+        """
+        for i in range(0, len(list), length):
+            yield list[i:i+length]
 
     def create_credentials(self, credentials):
         """
@@ -181,7 +191,7 @@ class py_sxapi:
                 -cono: the SXe Company Number in the callConnection object
                 -username: the initials of the SXe operator making the call
                 -password: the password of the SXe operating making the call 
-            -file, a file-like object containing a table mapping to the data needed 
+            -file, an iterable containing a table mapping to the data needed 
             for sxapiICProductMnt
         Output: A JSON array consisting of two lists: ErrorMessage and ReturnData
         """
@@ -191,72 +201,79 @@ class py_sxapi:
 
         chg_list = []
 
-        with open(file) as csvfile:
-            reader = csv.DictReader(csvfile)
-            set_no = 1
-            for row in reader:
-                seq_no = 1
-                key1 = row['prod']
-                if 'whse' in row:
-                    key2 = row['whse']
-                else:
-                    key2 = ''
-                update_mode = 'chg'
-                
-                if key2 != '':
-                    if self.check_product_warehouse(key1, key2, credentials) == True:
-                        update_mode = 'chg'
-                    else:
-                        update_mode = 'add'
-                else:
-                    if self.check_product(key1, credentials) == True:
-                        update_mode = 'chg'
-                    else:
-                        update_mode = 'add'
 
-                for key in row.keys():
-                    if key not in ['prod','whse']:
-                        tmp_dict = {}
-                        tmp_dict['fieldName'] = key.lower()
-                        tmp_dict['fieldValue'] = row[key]
-                        tmp_dict['key1'] = key1
-                        tmp_dict['key2'] = key2
-                        tmp_dict['seqNo'] = seq_no
-                        tmp_dict['setNo'] = set_no
-                        tmp_dict['updateMode'] = update_mode
-                        chg_list.append(tmp_dict)
-                        seq_no += 1
-                
-                set_no += 1
-                 
+        set_no = 1
+        for row in file:
+            seq_no = 1
+            key1 = row['prod']
+            if 'whse' in row:
+                key2 = row['whse']
+            else:
+                key2 = ''
+            update_mode = 'chg'
+            
+            if key2 != '':
+                if self.check_product_warehouse(key1, key2, credentials) == True:
+                    update_mode = 'chg'
+                else:
+                    update_mode = 'add'
+            else:
+                if self.check_product(key1, credentials) == True:
+                    update_mode = 'chg'
+                else:
+                    update_mode = 'add'
 
-        #the request payload. See ICProductMnt in the SXAPI docs for more information on structure
-        request={'request':                         #the request payload. See ICProductMnt in the SXAPI docs for more information on structure
-            {
-                'companyNumber': credentials['cono'],
-                'operatorInit' : credentials['username'],
-                'operatorPassword' : credentials['password'],
-                'tMntTt' : {'t-mnt-tt':chg_list}
-            }
-        }
+            for key in row.keys():
+                if key not in ['prod','whse']:
+                    tmp_dict = {}
+                    tmp_dict['fieldName'] = key.lower()
+                    tmp_dict['fieldValue'] = row[key]
+                    tmp_dict['key1'] = key1
+                    tmp_dict['key2'] = key2
+                    tmp_dict['seqNo'] = seq_no
+                    tmp_dict['setNo'] = set_no
+                    tmp_dict['updateMode'] = update_mode
+                    chg_list.append(tmp_dict)
+                    seq_no += 1
+            
+            set_no += 1
         
-        response = self.send_request(function='sxapiicproductmnt', data=request)
+        if(len(chg_list) > 100):
+            chg_batch = list(self.chunk(100,chg_list))
 
-        response_dict = response.json()
         return_dict = {}
+        return_dict['ErrorMessage'] = []
+        return_dict['ReturnData'] = []
 
-        if response_dict['response']['cErrorMessage'] is not None:
-            errors = response_dict['response']['cErrorMessage'].split('|')
-            return_dict['ErrorMessage'] = errors
+        for batch in chg_batch:
+            #the request payload. See ICProductMnt in the SXAPI docs for more information on structure
+            request={'request':                         #the request payload. See ICProductMnt in the SXAPI docs for more information on structure
+                {
+                    'companyNumber': credentials['cono'],
+                    'operatorInit' : credentials['username'],
+                    'operatorPassword' : credentials['password'],
+                    'tMntTt' : {'t-mnt-tt':batch}
+                }
+            }
+        
+            response = self.send_request(function='sxapiicproductmnt', data=request)
 
-        if response_dict['response']['returnData'] is not None:
-            return_data = response_dict['response']['returnData'].split('|')
-            return_dict['ReturnData'] = return_data
+            response_dict = response.json()
 
-        #print dir(response)
-        if self._logfile != '':
-            with open(self._logfile, 'a') as logf:
-                print("%s: ICProductMnt - %s" % (datetime.datetime.utcnow(), json.dumps(return_dict)), file=logf)
+            if response_dict['response']['cErrorMessage'] is not None:
+                errors = response_dict['response']['cErrorMessage'].split('|')
+                for item in errors:
+                    return_dict['ErrorMessage'].append(item)
+
+            if response_dict['response']['returnData'] is not None:
+                return_data = response_dict['response']['returnData'].split('|')
+                for item in return_data:
+                    return_dict['ReturnData'].append(item)
+
+            #print dir(response)
+            if self._logfile != '':
+                with open(self._logfile, 'a') as logf:
+                    print("%s: ICProductMnt - %s" % (datetime.datetime.utcnow(), json.dumps(return_dict)), file=logf)
 
         return json.dumps(return_dict)
 
@@ -269,7 +286,7 @@ class py_sxapi:
                 -cono: the SXe Company Number in the callConnection object
                 -username: the initials of the SXe operator making the call
                 -password: the password of the SXe operating making the call 
-            -file, a file-like object containing a table mapping to the data needed 
+            -file, an iterable containing a table mapping to the data needed 
             for sxapiARCustomerMnt
         Output: A JSON array consisting of two lists: ErrorMessage and ReturnData
         """
@@ -278,31 +295,30 @@ class py_sxapi:
 
         chg_list = []
 
-        with open(file) as csvfile:
-            reader = csv.DictReader(csvfile)
-            set_no = 1
-            for row in reader:
-                seq_no = 1
-                key1 = row['custno']
-                if 'shipto' in row:
-                    key2 = row['shipto']
-                else:
-                    key2 = ''
-                for key in row.keys():
-                    if key not in ['custno','shipto']:
-                        tmp_dict = {}
-                        tmp_dict['fieldName'] = key.lower()
-                        tmp_dict['fieldValue'] = row[key]
-                        tmp_dict['key1'] = key1
-                        tmp_dict['key2'] = key2
-                        tmp_dict['seqNo'] = seq_no
-                        tmp_dict['setNo'] = set_no
-                        tmp_dict['updateMode'] = 'chg'
-                        chg_list.append(tmp_dict)
-                        seq_no += 1
-                
-                set_no += 1
-                 
+
+        set_no = 1
+        for row in file:
+            seq_no = 1
+            key1 = row['custno']
+            if 'shipto' in row:
+                key2 = row['shipto']
+            else:
+                key2 = ''
+            for key in row.keys():
+                if key not in ['custno','shipto']:
+                    tmp_dict = {}
+                    tmp_dict['fieldName'] = key.lower()
+                    tmp_dict['fieldValue'] = row[key]
+                    tmp_dict['key1'] = key1
+                    tmp_dict['key2'] = key2
+                    tmp_dict['seqNo'] = seq_no
+                    tmp_dict['setNo'] = set_no
+                    tmp_dict['updateMode'] = 'chg'
+                    chg_list.append(tmp_dict)
+                    seq_no += 1
+            
+            set_no += 1
+             
 
         #the request payload. See ICProductMnt in the SXAPI docs for more information on structure
         request={'request':                         #the request payload. See ICProductMnt in the SXAPI docs for more information on structure
