@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
 	name='py_sxapi',
-	version = '0.2',
+	version = '0.3',
 	license = 'GPL-3.0',
 	packages=find_packages(),
 	#py_modules=['py_sxapi'],
@@ -12,6 +12,6 @@ setup(
 	url='https://bitbucket.org/psscorp/py-sxapi',
 	include_package_data=True,
 	install_requires=[
-		'bs4',
+		'bs4','requests',
 	],
 )
