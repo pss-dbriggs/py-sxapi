@@ -238,8 +238,8 @@ class py_sxapi:
             
             set_no += 1
         
-        if(len(chg_list) > 100):
-            chg_batch = list(self.chunk(100,chg_list))
+        #if(len(chg_list) > 100):
+        chg_batch = list(self.chunk(100,chg_list))
 
         return_dict = {}
         return_dict['ErrorMessage'] = []
