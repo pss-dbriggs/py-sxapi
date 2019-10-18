@@ -181,6 +181,20 @@ class py_sxapi:
             return True
 
     def get_product_data(self, product, use_xref=0, credentials=None):
+        """
+        Returns basic data about a product. Uses sxapiicgetproductdatageneralv3
+        Input:
+            -credentials, a dictionary containing three items, which are used in
+                creating the connection:
+                    -cono: the SXe Company Number in the callConnection object
+                    -username: the initials of the SXe operator making the call
+                    -password: the password of the SXe operating making the call
+            -product: the product number
+            -use_xref: whether or not to use the cross-reference logic. Defaults to 0 (no)
+        Output:
+            a dictionary of product information, passed through from the sxapi call
+
+        """
         if credentials is None and self._credentials != {}:
             credentials = self._credentials
 
@@ -198,7 +212,7 @@ class py_sxapi:
 
         response_dict = response.json()
 
-        return response_dict
+        return response_dict['response']
 
     def item_import(self, file, credentials=None):
         """
