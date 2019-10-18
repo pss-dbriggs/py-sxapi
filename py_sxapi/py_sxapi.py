@@ -5,6 +5,7 @@
     wsdl: http://pssapps8/sxapi/serviceIC.svc.
 """
 from __future__ import print_function
+import configparser
 import csv
 import json
 from typing import Dict, List, Any
@@ -12,6 +13,19 @@ from typing import Dict, List, Any
 import requests
 import datetime
 from bs4 import BeautifulSoup
+
+
+def chunk(length, data):
+    """
+    Used to separate long lists into multiple requests for performance reasons.
+    Input:
+        -length, the max length of each chunk to be returned
+        -list, the list of elements to be chunked
+    Output: List of chunks of max length length
+    """
+    for i in range(0, len(data), length):
+        yield data[i:i + length]
+
 
 class py_sxapi:
     _mode = 'prod'
@@ -21,39 +35,27 @@ class py_sxapi:
     _credentials = {}
     _directory = {}
     
-    def __init__(self, mode = 'prod', debug=False):
+    def __init__(self, mode, debug=False):
         """
         TODO: Make endpoint and logfile parameters, pull both (as well as mode) from config file if not specified
         """
-        self._mode = mode
-        self._debug = debug  
-        
-        if self._mode == 'prod':
-            self.endpoint = 'http://psssxe2:8185/rest/sxapirestservice/'
-        else:
-            self.endpoint = 'http://psssxe3:8080/rest/sxapirestservice/'
+        config = configparser.ConfigParser()
+        config.read('config.ini')
 
-        #Legacy SOAP code, can remove
-        """wsdl = 'http://'+web_srv+'/sxapi/ServiceIC.svc?wsdl'    #pull in the WSDL
-        client = zeep.Client(wsdl=wsdl)
-        self._client = client"""
-        #item_import(file)
+        if not mode:
+            self._mode = config['DEFAULT']['mode']
+
+        self._endpoint = config[self._mode]['endpoint']
+        self._debug = config[self._mode].getboolean('debug')
+
+        if self._debug:
+            self._logfile = config[self._mode]['logfile']
+
     def get_directory(self):
-        response = requests.get(self.endpoint+'?_wadl')
+        response = requests.get(self._endpoint+'?_wadl')
         soup = BeautifulSoup(response.text, 'lxml')
         for tag in soup.resources.find_all(path=True):
             self._directory[tag['path'][1:]] = tag.find('method')['name']
-
-    def chunk(self, length, list):
-        """
-        Used to separate long lists into multiple requests for performance reasons.
-        Input:
-            -length, the max length of each chunk to be returned
-            -list, the list of elements to be chunked
-        Output: List of chunks of max length length
-        """
-        for i in range(0, len(list), length):
-            yield list[i:i+length]
 
     def create_credentials(self, credentials):
         """
@@ -74,7 +76,6 @@ class py_sxapi:
             -OperatorPassword: the password of the SXe operating making the call 
         """
 
-        #connection_info = {'CompanyNumber':1,'ConnectionString':appsrv_cnxn_str,'OperatorInitials':'atst','OperatorPassword':'\A3F7c?K23E^'}  
         if self._mode == 'prod':
             appsrv_cnxn_str = 'appserver://psssxe:7182/sxapiappsrv'
         else:
@@ -94,7 +95,7 @@ class py_sxapi:
                 logf.write(json.dumps(data))
                 logf.write('\n')
 
-        response = requests.post(self.endpoint+function, json=data)         
+        response = requests.post(self._endpoint+function, json=data)
         
         if response.status_code == requests.codes.ok and self._logfile != '':
             with open(self._logfile, 'a') as logf:
@@ -121,7 +122,7 @@ class py_sxapi:
         if credentials is None and self._credentials != {}:
             credentials = self._credentials
 
-        request={'request':
+        request = {'request':
             {
                 'companyNumber': credentials['cono'],
                 'operatorInit' : credentials['username'],
@@ -129,10 +130,6 @@ class py_sxapi:
                 'productCode' : product
             }
         }
-        
-        #response = self._client.service.ICGetProductListV2( legacy SOAP call
-        #    callConnection=connection_info, 
-        #    request=request)
 
         response = self.send_request(function='sxapiicgetproductlistv2', data=request)
 
@@ -144,7 +141,6 @@ class py_sxapi:
         if product in items:
             return True
         return False
-        #return response_dict
 
     def check_product_warehouse(self, product, warehouse, credentials=None):
         """
@@ -165,10 +161,10 @@ class py_sxapi:
         request={'request':
             {
                 'companyNumber': credentials['cono'],
-                'operatorInit' : credentials['username'],
-                'operatorPassword' : credentials['password'],
-                'product':product,
-                'whse':warehouse
+                'operatorInit': credentials['username'],
+                'operatorPassword': credentials['password'],
+                'product': product,
+                'whse': warehouse
             }
         }
 
@@ -176,13 +172,33 @@ class py_sxapi:
 
         response_dict = response.json()
 
-        #return response_dict
-        if response_dict['response']['cErrorMessage'] == 'Product/Warehouse Not Set Up in Warehouse Products - ICSW (4602)':
+        if response_dict['response']['cErrorMessage'] == \
+                'Product/Warehouse Not Set Up in Warehouse Products - ICSW (4602)':
             return False
         elif response_dict['response']['cErrorMessage'] != '':
             raise ValueError('Cannot validate ICSW record')
         else:
             return True
+
+    def get_product_data(self, product, use_xref=0, credentials=None):
+        if credentials is None and self._credentials != {}:
+            credentials = self._credentials
+
+        request = {'request':
+            {
+                'companyNumber': credentials['cono'],
+                'operatorInit': credentials['username'],
+                'operatorPassword': credentials['password'],
+                'productCode': product,
+                'useCrossReferenceFlag': use_xref
+            }
+        }
+
+        response = self.send_request(function='sxapiicgetproductdatageneralv3', data=request)
+
+        response_dict = response.json()
+
+        return response_dict
 
     def item_import(self, file, credentials=None):
         """
@@ -197,12 +213,10 @@ class py_sxapi:
             for sxapiICProductMnt
         Output: A JSON array consisting of two lists: ErrorMessage and ReturnData
         """
-        #connection_info = self.create_credentials(credentials)
         if credentials is None and self._credentials != {}:
             credentials = self._credentials
 
         chg_list = []
-
 
         set_no = 1
         for row in file:
@@ -233,13 +247,10 @@ class py_sxapi:
                     seq_no += 1
             
             set_no += 1
-        
-        #if(len(chg_list) > 100):
-        chg_batch = list(self.chunk(100,chg_list))
 
-        return_dict = {}
-        return_dict['ErrorMessage'] = []
-        return_dict['ReturnData'] = []
+        chg_batch = list(chunk(100, chg_list))
+
+        return_dict = {'ErrorMessage': [], 'ReturnData': []}
 
         for batch in chg_batch:
             #the request payload. See ICProductMnt in the SXAPI docs for more information on structure
@@ -266,7 +277,6 @@ class py_sxapi:
                 for item in return_data:
                     return_dict['ReturnData'].append(item)
 
-            #print dir(response)
             if self._logfile != '':
                 with open(self._logfile, 'a') as logf:
                     print("%s: ICProductMnt - %s" % (datetime.datetime.utcnow(), json.dumps(return_dict)), file=logf)
@@ -308,7 +318,6 @@ class py_sxapi:
             
             set_no += 1
 
-        #the request payload. See ICProductMnt in the SXAPI docs for more information on structure
         request={'request':  #the request payload. See ICProductMnt in the SXAPI docs for more information on structure
             {
                 'companyNumber': credentials['cono'],
@@ -331,7 +340,6 @@ class py_sxapi:
             return_data = response_dict['response']['returnData'].split('|')
             return_dict['ReturnData'] = return_data
 
-        #print dir(response)
         if self._logfile != '':
             with open(self._logfile, 'a') as logf:
                 print("%s: ARCustomerMnt - %s" % (datetime.datetime.utcnow(), json.dumps(return_dict)), file=logf)
@@ -377,7 +385,6 @@ class py_sxapi:
 
             set_no += 1
 
-        # the request payload. See ICProductMnt in the SXAPI docs for more information on structure
         request = {
             'request':  # the request payload. See ICProductMnt in the SXAPI docs for more information on structure
                 {
@@ -401,7 +408,6 @@ class py_sxapi:
             return_data = response_dict['response']['returnData'].split('|')
             return_dict['ReturnData'] = return_data
 
-        # print dir(response)
         if self._logfile != '':
             with open(self._logfile, 'a') as logf:
                 print("%s: ARCustomerMnt - %s" % (datetime.datetime.utcnow(), json.dumps(return_dict)), file=logf)
@@ -459,8 +465,6 @@ class py_sxapi:
                     }
             }
 
-            # response = client.service.ICProductMnt(callConnection=connection_info, request=request)
-            # the actual SOAP call to ICProductMnt
             response = self.send_request(function='sxapioepricing', data=request)
             response_dict = response.json()
 
