@@ -121,7 +121,7 @@ class py_sxapi:
         if credentials is None and self._credentials != {}:
             credentials = self._credentials
 
-        request={'request':                         #the request payload. See ICGetProductListV2 in the SXAPI docs for more information on structure
+        request={'request':
             {
                 'companyNumber': credentials['cono'],
                 'operatorInit' : credentials['username'],
@@ -162,7 +162,7 @@ class py_sxapi:
         if credentials is None and self._credentials != {}:
             credentials = self._credentials
 
-        request={'request':                         #the request payload. See ICGetWhseProductDataGeneral in the SXAPI docs for more information on structure
+        request={'request':
             {
                 'companyNumber': credentials['cono'],
                 'operatorInit' : credentials['username'],
@@ -215,26 +215,20 @@ class py_sxapi:
             update_mode = 'chg'
             
             if key2 != '':
-                if self.check_product_warehouse(key1, key2, credentials) == True:
+                if self.check_product_warehouse(key1, key2, credentials):
                     update_mode = 'chg'
                 else:
                     update_mode = 'add'
             else:
-                if self.check_product(key1, credentials) == True:
+                if self.check_product(key1, credentials):
                     update_mode = 'chg'
                 else:
                     update_mode = 'add'
 
             for key in row.keys():
                 if key not in ['prod','whse']:
-                    tmp_dict = {}
-                    tmp_dict['fieldName'] = key.lower()
-                    tmp_dict['fieldValue'] = row[key]
-                    tmp_dict['key1'] = key1
-                    tmp_dict['key2'] = key2
-                    tmp_dict['seqNo'] = seq_no
-                    tmp_dict['setNo'] = set_no
-                    tmp_dict['updateMode'] = update_mode
+                    tmp_dict = {'fieldName': key.lower(), 'fieldValue': row[key], 'key1': key1, 'key2': key2,
+                                'seqNo': seq_no, 'setNo': set_no, 'updateMode': update_mode}
                     chg_list.append(tmp_dict)
                     seq_no += 1
             
@@ -249,7 +243,7 @@ class py_sxapi:
 
         for batch in chg_batch:
             #the request payload. See ICProductMnt in the SXAPI docs for more information on structure
-            request={'request':                         #the request payload. See ICProductMnt in the SXAPI docs for more information on structure
+            request={'request':
                 {
                     'companyNumber': credentials['cono'],
                     'operatorInit' : credentials['username'],
@@ -338,6 +332,76 @@ class py_sxapi:
             return_dict['ReturnData'] = return_data
 
         #print dir(response)
+        if self._logfile != '':
+            with open(self._logfile, 'a') as logf:
+                print("%s: ARCustomerMnt - %s" % (datetime.datetime.utcnow(), json.dumps(return_dict)), file=logf)
+
+        return json.dumps(return_dict)
+
+    def pricing_import(self, file, credentials=None):
+        """
+        Import customer data based on file input. Uses the sxapiARCustomerMnt Call.
+        Input:
+            -credentials, a dictionary containing three items, which are used in
+            creating the connection:
+                -cono: the SXe Company Number in the callConnection object
+                -username: the initials of the SXe operator making the call
+                -password: the password of the SXe operating making the call
+            -file, an iterable containing a table mapping to the data needed
+            for sxapiARCustomerMnt
+        Output: A JSON array consisting of two lists: ErrorMessage and ReturnData
+        """
+        if credentials is None and self._credentials != {}:
+            credentials = self._credentials
+
+        chg_list = []
+
+        set_no = 1
+        for row in file:
+            update_mode = 'chg'
+            seq_no = 1
+            if 'pdrecno' in row.keys():
+                key1 = row['pdrecno']
+                if row['pdrecno'] == '':
+                    update_mode = 'add'
+            else:
+                key1 = ''
+                update_mode = 'add'
+            key2 = ''
+            for key in row.keys():
+                if key not in ['pdrecno']:
+                    tmp_dict = {'fieldName': key.lower(), 'fieldValue': row[key], 'key1': key1, 'key2': key2,
+                                'seqNo': seq_no, 'setNo': set_no, 'updateMode': update_mode}
+                    chg_list.append(tmp_dict)
+                    seq_no += 1
+
+            set_no += 1
+
+        # the request payload. See ICProductMnt in the SXAPI docs for more information on structure
+        request = {
+            'request':  # the request payload. See ICProductMnt in the SXAPI docs for more information on structure
+                {
+                    'companyNumber': credentials['cono'],
+                    'operatorInit': credentials['username'],
+                    'operatorPassword': credentials['password'],
+                    'tMntTt': {'t-mnt-tt': chg_list}
+                }
+        }
+
+        response = self.send_request(function='sxapipdpricingmnt', data=request)
+
+        response_dict = response.json()
+        return_dict = {}
+
+        if response_dict['response']['cErrorMessage'] is not None:
+            errors = response_dict['response']['cErrorMessage'].split('|')
+            return_dict['ErrorMessage'] = errors
+
+        if response_dict['response']['returnData'] is not None:
+            return_data = response_dict['response']['returnData'].split('|')
+            return_dict['ReturnData'] = return_data
+
+        # print dir(response)
         if self._logfile != '':
             with open(self._logfile, 'a') as logf:
                 print("%s: ARCustomerMnt - %s" % (datetime.datetime.utcnow(), json.dumps(return_dict)), file=logf)
