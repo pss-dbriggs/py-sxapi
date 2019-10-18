@@ -7,6 +7,8 @@
 from __future__ import print_function
 import csv
 import json
+from typing import Dict, List, Any
+
 import requests
 import datetime
 from bs4 import BeautifulSoup
@@ -295,7 +297,6 @@ class py_sxapi:
 
         chg_list = []
 
-
         set_no = 1
         for row in file:
             seq_no = 1
@@ -306,22 +307,15 @@ class py_sxapi:
                 key2 = ''
             for key in row.keys():
                 if key not in ['custno','shipto']:
-                    tmp_dict = {}
-                    tmp_dict['fieldName'] = key.lower()
-                    tmp_dict['fieldValue'] = row[key]
-                    tmp_dict['key1'] = key1
-                    tmp_dict['key2'] = key2
-                    tmp_dict['seqNo'] = seq_no
-                    tmp_dict['setNo'] = set_no
-                    tmp_dict['updateMode'] = 'chg'
+                    tmp_dict = {'fieldName': key.lower(), 'fieldValue': row[key], 'key1': key1, 'key2': key2,
+                                'seqNo': seq_no, 'setNo': set_no, 'updateMode': 'chg'}
                     chg_list.append(tmp_dict)
                     seq_no += 1
             
             set_no += 1
-             
 
         #the request payload. See ICProductMnt in the SXAPI docs for more information on structure
-        request={'request':                         #the request payload. See ICProductMnt in the SXAPI docs for more information on structure
+        request={'request':  #the request payload. See ICProductMnt in the SXAPI docs for more information on structure
             {
                 'companyNumber': credentials['cono'],
                 'operatorInit' : credentials['username'],
@@ -349,3 +343,78 @@ class py_sxapi:
                 print("%s: ARCustomerMnt - %s" % (datetime.datetime.utcnow(), json.dumps(return_dict)), file=logf)
 
         return json.dumps(return_dict)
+
+    def get_pricing(self, data, customer_number, ship_to, warehouse, credentials=None):
+        """
+        Import customer data based on file input. Uses the sxapiARCustomerMnt Call.
+        Input:
+            -credentials, a dictionary containing three items, which are used in
+            creating the connection:
+                -cono: the SXe Company Number in the callConnection object
+                -username: the initials of the SXe operator making the call
+                -password: the password of the SXe operating making the call
+            -file, an iterable containing a table mapping to the data needed
+            for sxapiARCustomerMnt
+        Output: A JSON array consisting of two lists: ErrorMessage and ReturnData
+        """
+        if credentials is None and self._credentials != {}:
+            credentials = self._credentials
+
+        if customer_number == 0:
+            customer_number = '10008088'
+        if ship_to == '0':
+            ship_to = '1'
+        if warehouse == '':
+            warehouse = '100p'
+
+        return_dict: List[Dict[str, Any]] = []
+
+        for row in data:
+            try:
+                unit = row['unit']
+            except KeyError:
+                unit = 'each'
+
+            try:
+                qty = row['qty']
+            except KeyError:
+                qty = 1
+
+            request = {
+                'request':  # request payload. See ICProductMnt in the SXAPI docs for more information on structure
+                    {
+                        'companyNumber': credentials['cono'],
+                        'operatorInit': credentials['username'],
+                        'operatorPassword': credentials['password'],
+                        'customerNumber': customer_number,
+                        'shipTo': ship_to,
+                        'warehouse': warehouse,
+                        'quantity': qty,
+                        'productCode': row['prod'],
+                        'unitOfMeasure': unit
+                    }
+            }
+
+            # response = client.service.ICProductMnt(callConnection=connection_info, request=request)
+            # the actual SOAP call to ICProductMnt
+            response = self.send_request(function='sxapioepricing', data=request)
+            response_dict = response.json()
+
+            return_dict.append({'prod': row['prod'],
+                                'price': response_dict['response']['price'],
+                                'discount_amount':response_dict['response']['discountAmount'],
+                                'discount_type':response_dict['response']['discountType'],
+                                'net_available':response_dict['response']['netAvailable']
+                                })
+
+        """with open('//pssfile3/Users/dbriggs/My Documents/Pricing/pricing_test_out.csv', 'w') as csvfile:
+            fieldnames = ['prod', 'price']
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader()
+
+            for row in return_dict:
+                writer.writerow(row)"""
+        if len(return_dict) == 1:
+            return return_dict[0]
+        else:
+            return return_dict
