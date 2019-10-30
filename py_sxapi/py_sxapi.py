@@ -52,11 +52,6 @@ class py_sxapi:
         else:
             self._endpoint = endpoint
 
-        if not debug:
-            self._debug = config[self._mode].getboolean('debug')
-        else:
-            self._endpoint = debug
-
         if self._debug:
             self._logfile = config[self._mode]['logfile']
 
