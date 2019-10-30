@@ -35,7 +35,7 @@ class py_sxapi:
     _credentials = {}
     _directory = {}
     
-    def __init__(self, mode, debug=False):
+    def __init__(self, mode, endpoint='', logfile='', debug=False):
         """
         TODO: Make endpoint and logfile parameters, pull both (as well as mode) from config file if not specified
         """
@@ -44,9 +44,18 @@ class py_sxapi:
 
         if not mode:
             self._mode = config['DEFAULT']['mode']
+        else:
+            self._mode = mode
 
-        self._endpoint = config[self._mode]['endpoint']
-        self._debug = config[self._mode].getboolean('debug')
+        if not endpoint:
+            self._endpoint = config[self._mode]['endpoint']
+        else:
+            self._endpoint = endpoint
+
+        if not debug:
+            self._debug = config[self._mode].getboolean('debug')
+        else:
+            self._endpoint = debug
 
         if self._debug:
             self._logfile = config[self._mode]['logfile']
